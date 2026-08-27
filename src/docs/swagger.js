@@ -9,7 +9,7 @@ const swaggerOptions = {
       version: "1.0.0",
       description: "JupiterLearn Platform API Documentation",
     },
-    servers: [{ url: "http://localhost:3000/" }],
+    servers: [{ url: "https://backend.benb3n.cloud/" }],
     components: {
       securitySchemes: {
         ApiAuth: {
