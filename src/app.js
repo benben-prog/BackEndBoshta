@@ -34,36 +34,60 @@ const swaggerSpec = require("./docs/swagger");
 const app = express();
 
 // ============================================
+// CORS CONFIGURATION - MUST BE FIRST
+// ============================================
+
+// CORS options
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Check if origin is allowed
+    const allowedOrigins = env.CORS_ORIGINS ? env.CORS_ORIGINS.split(',') : [];
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // For development
+    if (env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'x-client-key',
+    'x-super-admin-key',
+    'Accept',
+    'Origin',
+    'X-Requested-With'
+  ],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  maxAge: 86400 // 24 hours
+};
+
+// Apply CORS middleware FIRST
+app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
+
+// ============================================
 // SECURITY MIDDLEWARE
 // ============================================
 
-// Helmet - HTTP security headers
+// Helmet - HTTP security headers (after CORS)
 app.use(
   helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
-  }),
-);
-
-// CORS - restrict origins
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (env.CORS_ORIGINS.includes("*") || env.CORS_ORIGINS.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "x-client-key",
-      "x-super-admin-key",
-    ],
-  }),
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
 );
 
 // Compression
@@ -86,26 +110,28 @@ if (env.NODE_ENV === "production") {
 
 // General rate limit
 const generalLimiter = rateLimit({
-  windowMs: env.RATE_LIMIT_WINDOW_MS,
-  max: env.RATE_LIMIT_MAX,
+  windowMs: env.RATE_LIMIT_WINDOW_MS || 900000,
+  max: env.RATE_LIMIT_MAX || 100,
   message: {
     success: false,
     message: "Too many requests, try again later",
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS' // Skip OPTIONS requests
 });
 
 // Auth rate limit
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: env.RATE_LIMIT_AUTH_MAX,
+  max: env.RATE_LIMIT_AUTH_MAX || 5,
   message: {
     success: false,
     message: "Too many login attempts, try after 15 minutes",
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS' // Skip OPTIONS requests
 });
 
 // Upload rate limit
@@ -118,23 +144,15 @@ const uploadLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS'
 });
 
-// Upload rate limit middleware
-const uploadLimiterMiddleware = (req, res, next) => {
-  if (req.path.includes("bulk-upload")) {
-    return uploadLimiter(req, res, next);
-  }
-  next();
-};
-
-// Apply rate limits
+// Apply rate limits (after CORS)
 app.use("/api", generalLimiter);
 app.use("/api/auth", authLimiter);
-app.use("/api", uploadLimiterMiddleware);
 
 // ============================================
-// ROOT ROUTES
+// ROOT ROUTES (BEFORE PLATFORM STATUS CHECK)
 // ============================================
 
 // Root
@@ -162,7 +180,7 @@ app.get("/api-docs-json", (req, res) => {
   res.json(swaggerSpec);
 });
 
-// Swagger UI with CDN
+// Swagger UI
 app.get("/api-docs", (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -198,17 +216,23 @@ app.get("/api-docs", (req, res) => {
 // ============================================
 
 const checkPlatformStatus = async (req, res, next) => {
+  // Skip for OPTIONS requests
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
+  
   try {
     if (
       req.path.includes("/super-admin") ||
       req.path.includes("/auth") ||
-      req.path.includes("/health")
+      req.path.includes("/health") ||
+      req.path.includes("/api-docs")
     ) {
       return next();
     }
 
     const result = await query(
-      "SELECT platform_status FROM settings WHERE id = 1",
+      "SELECT platform_status FROM settings WHERE id = 1"
     );
     const platformStatus = result.rows[0]?.platform_status;
 
@@ -221,7 +245,8 @@ const checkPlatformStatus = async (req, res, next) => {
 
     next();
   } catch (error) {
-    next(error);
+    // If database error, still allow access
+    next();
   }
 };
 
@@ -239,7 +264,7 @@ app.use(
   apiMiddelware,
   clientAuth,
   assistantAuth,
-  assistantRoutes,
+  assistantRoutes
 );
 app.use("/api/teacher", apiMiddelware, clientAuth, teacherAuth, teacherRoutes);
 app.use(
@@ -247,7 +272,7 @@ app.use(
   apiMiddelware,
   clientAuth,
   superAdminAuth,
-  superAdminRoutes,
+  superAdminRoutes
 );
 
 // ============================================
