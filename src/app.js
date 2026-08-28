@@ -1,9 +1,8 @@
 const express = require("express");
-const cors = require("cors");
 const helmet = require("helmet");
 const compression = require("compression");
-const rateLimit = require("express-rate-limit");
 const morgan = require("morgan");
+const path = require("path");
 
 // Routes
 const authRouts = require("./modules/auth/auth.routes");
@@ -34,6 +33,13 @@ const swaggerSpec = require("./docs/swagger");
 const app = express();
 
 // ============================================
+// STATIC FILES (MUST BE BEFORE ROUTES)
+// ============================================
+
+// Serve uploads directory
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
+// ============================================
 // SECURITY MIDDLEWARE
 // ============================================
 
@@ -45,32 +51,10 @@ app.use(
   }),
 );
 
-// CORS - restrict origins
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (env.CORS_ORIGINS.includes("*") || env.CORS_ORIGINS.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "x-client-key",
-      "x-super-admin-key",
-    ],
-  }),
-);
-
 // Compression
 app.use(compression());
 
 // Body parser
-app.use("/uploads",express.static("uploads"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
@@ -80,59 +64,6 @@ if (env.NODE_ENV === "production") {
 } else {
   app.use(morgan("dev"));
 }
-
-// ============================================
-// RATE LIMITING
-// ============================================
-
-// General rate limit
-const generalLimiter = rateLimit({
-  windowMs: env.RATE_LIMIT_WINDOW_MS,
-  max: env.RATE_LIMIT_MAX,
-  message: {
-    success: false,
-    message: "Too many requests, try again later",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// Auth rate limit
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: env.RATE_LIMIT_AUTH_MAX,
-  message: {
-    success: false,
-    message: "Too many login attempts, try after 15 minutes",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// Upload rate limit
-const uploadLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 50,
-  message: {
-    success: false,
-    message: "Too many uploads, try later",
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-// Upload rate limit middleware
-const uploadLimiterMiddleware = (req, res, next) => {
-  if (req.path.includes("bulk-upload")) {
-    return uploadLimiter(req, res, next);
-  }
-  next();
-};
-
-// Apply rate limits
-app.use("/api", generalLimiter);
-app.use("/api/auth", authLimiter);
-app.use("/api", uploadLimiterMiddleware);
 
 // ============================================
 // ROOT ROUTES
@@ -203,7 +134,9 @@ const checkPlatformStatus = async (req, res, next) => {
     if (
       req.path.includes("/super-admin") ||
       req.path.includes("/auth") ||
-      req.path.includes("/health")
+      req.path.includes("/health") ||
+      req.path.includes("/uploads") ||
+      req.path.includes("/api-docs")
     ) {
       return next();
     }
