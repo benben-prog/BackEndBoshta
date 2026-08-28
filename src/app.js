@@ -33,12 +33,14 @@ const swaggerSpec = require("./docs/swagger");
 const app = express();
 
 // ============================================
-// OPTIONS HANDLER (MUST BE FIRST)
+// OPTIONS HANDLER (For CORS preflight)
 // ============================================
 
-// Handle all OPTIONS requests
-app.options("*", (req, res) => {
-  res.status(200).send();
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  next();
 });
 
 // ============================================
