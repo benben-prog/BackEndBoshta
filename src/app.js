@@ -33,17 +33,15 @@ const swaggerSpec = require("./docs/swagger");
 const app = express();
 
 // ============================================
-// STATIC FILES (MUST BE BEFORE ROUTES)
+// STATIC FILES
 // ============================================
 
-// Serve uploads directory
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 // ============================================
 // SECURITY MIDDLEWARE
 // ============================================
 
-// Helmet - HTTP security headers
 app.use(
   helmet({
     contentSecurityPolicy: false,
@@ -51,14 +49,11 @@ app.use(
   }),
 );
 
-// Compression
 app.use(compression());
 
-// Body parser
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Logging
 if (env.NODE_ENV === "production") {
   app.use(morgan("combined"));
 } else {
@@ -69,7 +64,6 @@ if (env.NODE_ENV === "production") {
 // ROOT ROUTES
 // ============================================
 
-// Root
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -79,7 +73,6 @@ app.get("/", (req, res) => {
   });
 });
 
-// Health check
 app.get("/health", (req, res) => {
   res.json({
     success: true,
@@ -89,12 +82,10 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Swagger JSON spec
 app.get("/api-docs-json", (req, res) => {
   res.json(swaggerSpec);
 });
 
-// Swagger UI with CDN
 app.get("/api-docs", (req, res) => {
   res.send(`
     <!DOCTYPE html>
@@ -188,10 +179,7 @@ app.use(
 // ERROR HANDLING
 // ============================================
 
-// 404 Handler
 app.use(notFoundHandler);
-
-// Error Handler
 app.use(errorHandler);
 
 module.exports = app;
