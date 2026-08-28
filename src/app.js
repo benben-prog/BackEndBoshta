@@ -33,6 +33,15 @@ const swaggerSpec = require("./docs/swagger");
 const app = express();
 
 // ============================================
+// OPTIONS HANDLER (MUST BE FIRST)
+// ============================================
+
+// Handle all OPTIONS requests
+app.options("*", (req, res) => {
+  res.status(200).send();
+});
+
+// ============================================
 // STATIC FILES
 // ============================================
 
